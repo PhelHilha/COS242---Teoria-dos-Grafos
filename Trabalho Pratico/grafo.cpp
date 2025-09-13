@@ -62,7 +62,6 @@ std::vector<int> Grafo::graus() const {
     return g;
 }
 
-// Função auxiliar (já pronta)
 void salvarInfos(const Grafo& g, const std::string& nomeSaida) {
     std::ofstream out(nomeSaida);
     if (!out.is_open()) throw std::runtime_error("Erro ao abrir arquivo de saída");
@@ -90,3 +89,4 @@ void salvarInfos(const Grafo& g, const std::string& nomeSaida) {
     out << "Grau medio: " << media << "\n";
     out << "Mediana do grau: " << mediana << "\n";
 }
+
