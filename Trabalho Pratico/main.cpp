@@ -1,116 +1,140 @@
-#include "grafo.h"
+#include "grafo.h"      // Sua classe de grafo
+#include "json.hpp"     // Biblioteca nlohmann/json
 #include <iostream>
-#include <limits>   // Para limpar o buffer de entrada (cin)
-#include <chrono>   // Para medir tempo de execução
+#include <string>
+#include <vector>
+#include <chrono>
+#include <algorithm>
 
+// Para facilitar a escrita
+using json = nlohmann::json;
 using namespace std::chrono;
 using namespace std;
 
-// Função auxiliar para limpar o buffer de entrada e evitar loops infinitos
-void limparBufferEntrada() {
-    cin.clear();
-    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+// Função para converter string para minúsculas para facilitar a comparação
+void toLower(string& s) {
+    transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c){ return tolower(c); });
 }
 
-int main() {
+// Assinatura de main modificada para aceitar argumentos de linha de comando
+int main(int argc, char* argv[]) {
+    // --- 1. Validação dos Argumentos ---
+    if (argc < 3) {
+        // Imprime mensagens de erro no 'stderr' (saída de erro padrão)
+        cerr << "Erro: Uso incorreto." << endl;
+        cerr << "Uso: ./analyzer <caminho_do_arquivo> <representacao>" << endl;
+        cerr << "Exemplo: ./analyzer entrada.txt lista" << endl;
+        return 1; // Retorna um código de erro
+    }
+
+    string nomeArquivo = argv[1];
+    string repr_str = argv[2];
+    toLower(repr_str); // Normaliza para minúsculas
+
+    Representacao tipo;
+    if (repr_str == "lista") {
+        tipo = LISTA;
+    } else if (repr_str == "matriz") {
+        tipo = MATRIZ;
+    } else {
+        cerr << "Erro: Tipo de representacao invalido. Use 'lista' ou 'matriz'." << endl;
+        return 1;
+    }
+
+    json resultadosJson; // Objeto JSON principal
+
     try {
-        int escolha_repr;
-        cout << "--- Biblioteca de Analise de Grafos ---\n\n";
-        cout << "Escolha a representacao do grafo:\n";
-        cout << "1 - Lista de Adjacencia\n";
-        cout << "2 - Matriz de Adjacencia\n";
-        cout << "Opcao: ";
-        cin >> escolha_repr;
+        // --- 2. Lógica do Programa (sem interação) ---
+        resultadosJson["configuracao"]["arquivoDeEntrada"] = nomeArquivo;
+        resultadosJson["configuracao"]["representacao"] = (tipo == LISTA) ? "Lista de Adjacencia" : "Matriz de Adjacencia";
 
-        if (escolha_repr != 1 && escolha_repr != 2) {
-            cout << "Opcao invalida. Usando Lista de Adjacencia por padrao.\n";
-            escolha_repr = 1;
+        Grafo g = Grafo::lerDeArquivo(nomeArquivo, tipo);
+        // 3. Salvar BFS e DFS consolidados em arquivo único
+        int vertice_inicial = 1; // padrão
+        if (argc >= 4) {
+            vertice_inicial = stoi(argv[3]); // usuário pode passar um vértice inicial
         }
+        string saidaBuscas = nomeArquivo + "_buscas.txt";
+        g.salvarBuscasConsolidadas(vertice_inicial, saidaBuscas);
+        map<string, double> estatisticas = g.getEstatisticas();
 
-        Representacao tipo = (escolha_repr == 1) ? LISTA : MATRIZ;
+        resultadosJson["informacoesBasicas"]["vertices"] = estatisticas["vertices"];
+        resultadosJson["informacoesBasicas"]["arestas"] = estatisticas["arestas"];
+        resultadosJson["informacoesBasicas"]["grauMinimo"] = estatisticas["grauMinimo"];
+        resultadosJson["informacoesBasicas"]["grauMaximo"] = estatisticas["grauMaximo"];
+        resultadosJson["informacoesBasicas"]["grauMedio"] = estatisticas["grauMedio"];
+        resultadosJson["informacoesBasicas"]["grauMediana"] = estatisticas["grauMediana"];
 
-        // 1. Leitura do Grafo a partir do arquivo
-        cout << "\nLendo grafo do arquivo 'entrada.txt'...\n";
-        Grafo g = Grafo::lerDeArquivo("entrada.txt", tipo);
-        cout << "Grafo lido com sucesso!\n";
-        cout << "-> Vertices: " << g.getNumVertices() << endl;
-        cout << "-> Arestas: " << g.getNumArestas() << endl;
+        json& desempenho = resultadosJson["desempenho"];
 
-        // 2. Salvar Informações Básicas
-        cout << "\nGerando estatisticas basicas (grau min/max, media, etc)..." << endl;
-        salvarInfos(g, "infos.txt");
-        cout << "-> Arquivo 'infos.txt' gerado com sucesso!" << endl;
+        auto inicio_bfs = high_resolution_clock::now();
+        for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
+            g.BFS_com_retorno(i);
+        }
+        auto fim_bfs = high_resolution_clock::now();
+        desempenho["tempoMedio_BFS_ms"] = duration_cast<milliseconds>(fim_bfs - inicio_bfs).count() / 100.0;
 
-        // 3. Buscas em Largura e Profundidade
-        int vertice_inicial;
-        cout << "\nDigite um vertice inicial para as buscas (ex: 1): ";
-        cin >> vertice_inicial;
-        limparBufferEntrada();
-
-        cout << "\nExecutando Busca em Largura (BFS)..." << endl;
-        g.Largura(vertice_inicial);
-        cout << "-> Arvore de busca e niveis salvos em 'Largura.txt'." << endl;
-
-        cout << "\nExecutando Busca em Profundidade (DFS)..." << endl;
-        g.Profundidade(vertice_inicial);
-        cout << "-> Arvore de busca e niveis salvos em 'Profundidade.txt'." << endl;
+        auto inicio_dfs = high_resolution_clock::now();
+        for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
+            g.DFS_com_retorno(i);
+        }
+        auto fim_dfs = high_resolution_clock::now();
+        desempenho["tempoMedio_DFS_ms"] = duration_cast<milliseconds>(fim_dfs - inicio_dfs).count() / 100.0;
         
-        // 4. Cálculo de Distância
-        int vertice_final;
-        cout << "\nDigite outro vertice para calcular a distancia a partir de " << vertice_inicial << ": ";
-        cin >> vertice_final;
-        limparBufferEntrada();
-
-        cout << "\nCalculando a distancia entre " << vertice_inicial << " e " << vertice_final << "..." << endl;
-        int dist = g.distancia(vertice_inicial, vertice_final);
-        if (dist != -1) {
-            cout << "-> A distancia (menor caminho) e: " << dist << endl;
+        desempenho["memoriaEstimada_MB"] = g.memoriaUsada() / (1024.0 * 1024.0);
+        
+        // --- 4. Análises Específicas ---
+        json& analises = resultadosJson["analises"];
+        
+        vector<int> inicios = {1, 2, 3};
+        vector<int> alvos = {10, 20, 30};
+        for (int v_inicio : inicios) {
+            auto pais_bfs = g.BFS_com_retorno(v_inicio);
+            auto pais_dfs = g.DFS_com_retorno(v_inicio);
+            for (int v_alvo : alvos) {
+                if (v_alvo < pais_bfs.size()) {
+                    analises["pais"]["BFS"]["inicio_" + to_string(v_inicio)]["vertice_" + to_string(v_alvo)] = pais_bfs[v_alvo];
+                }
+                if (v_alvo < pais_dfs.size()) {
+                    analises["pais"]["DFS"]["inicio_" + to_string(v_inicio)]["vertice_" + to_string(v_alvo)] = pais_dfs[v_alvo];
+                }
+            }
+        }
+        
+        vector<pair<int, int>> pares = {{10, 20}, {10, 30}, {20, 30}};
+        for (const auto& par : pares) {
+            json dist_obj;
+            dist_obj["par"] = to_string(par.first) + "-" + to_string(par.second);
+            dist_obj["distancia"] = g.distancia(par.first, par.second);
+            analises["distancias"].push_back(dist_obj);
+        }
+        
+        auto componentes = g.getComponentesConexas();
+        if (!componentes.empty()) {
+            analises["componentesConexas"]["quantidade"] = componentes.size();
+            auto it_maior = max_element(componentes.begin(), componentes.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
+            analises["componentesConexas"]["tamanhoMaior"] = it_maior->size();
+            auto it_menor = min_element(componentes.begin(), componentes.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
+            analises["componentesConexas"]["tamanhoMenor"] = it_menor->size();
         } else {
-            cout << "-> Nao ha caminho entre os vertices (distancia infinita)." << endl;
+            analises["componentesConexas"]["quantidade"] = 0;
         }
-
-        // 5. Cálculo do Diâmetro
-        cout << "\nCalculando o diametro do grafo (pode demorar um pouco)..." << endl;
-        int diam = g.diametro();
-        if (diam != -1) {
-            cout << "-> O diametro do grafo e: " << diam << endl;
-        } else {
-            cout << "-> O grafo e desconexo, portanto seu diametro e infinito." << endl;
-        }
-
-        // 6. Encontrar Componentes Conexas
-        cout << "\nEncontrando as componentes conexas..." << endl;
-        g.componentesConexas("componentes.txt");
-        cout << "-> Componentes salvas em 'componentes.txt'." << endl;
-
-        // 7. Medição de desempenho (100 BFS e 100 DFS)
-        cout << "\n\nExecutando 100 BFS e 100 DFS para medir tempo medio...\n";
-
-        auto inicio = high_resolution_clock::now();
-        for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
-            g.Largura(i);
-        }
-        auto fim = high_resolution_clock::now();
-        auto duracao_bfs = duration_cast<milliseconds>(fim - inicio).count() / 100.0;
-
-        inicio = high_resolution_clock::now();
-        for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
-            g.Profundidade(i);
-        }
-        fim = high_resolution_clock::now();
-        auto duracao_dfs = duration_cast<milliseconds>(fim - inicio).count() / 100.0;
-
-        cout << "-> Tempo medio BFS: " << duracao_bfs << " ms\n";
-        cout << "-> Tempo medio DFS: " << duracao_dfs << " ms\n";
-
-        // 8. Estimativa de memória usada
-        cout << "\nMemoria estimada utilizada: " 
-             << g.memoriaUsada() / (1024.0 * 1024.0) << " MB\n";
-
-        cout << "\n\n--- Analise concluida! Verifique os arquivos de saida. ---\n";
+        
+        // analises["diametro"] = g.diametro();
+        analises["diametroAproximado"] = g.diametroAproximado();
+        // --- 5. Saída Final ---
+        // Imprime o JSON para 'stdout'. Esta deve ser a ÚNICA saída para cout.
+        cout << resultadosJson.dump(4) << endl;
 
     } catch (const exception& e) {
-        cerr << "\nERRO CRITICO: " << e.what() << endl;
+        // Em caso de erro durante a execução, cria um JSON de erro
+        resultadosJson.clear();
+        resultadosJson["erro"] = e.what();
+        // Imprime o erro no 'stderr'
+        cerr << resultadosJson.dump(4) << endl;
+        return 1; // Retorna código de erro
     }
-    return 0;
+
+    return 0; // Sucesso
 }
