@@ -11,12 +11,15 @@ from pathlib import Path
 CPP_EXECUTABLE = './analyzer.exe'
 GRAPH_DIR = './Grafos'
 OUTPUT_CSV_FILE = 'resultados_analise.csv'
+# Define se queremos rodar a média amostral (k=100)
+# 't' para true, 'f' para false
+RUN_MEDIA_AMOSTRAL = 't' 
 
-def run_cpp_analysis(graph_file: str, representation: str, dijkstra_check: str, media_amostral: str) -> dict:
+def run_cpp_analysis(graph_file: str, representation: str, dijkstra_type: str, media_amostral: str) -> dict:
     """
     Executa o programa de análise de grafos em C++ e retorna os resultados.
     """
-    command = [CPP_EXECUTABLE, graph_file, representation, dijkstra_check, media_amostral]
+    command = [CPP_EXECUTABLE, graph_file, representation, dijkstra_type, media_amostral]
     
     try:
         result = subprocess.run(
@@ -24,21 +27,21 @@ def run_cpp_analysis(graph_file: str, representation: str, dijkstra_check: str, 
             capture_output=True, 
             text=True, 
             check=True,
-            encoding='utf-8' # Adicionado para garantir a decodificação correta
+            encoding='utf-8'
         )
         return json.loads(result.stdout)
     except subprocess.CalledProcessError as e:
-        # Erro na execução do C++, como grafo muito grande para matriz
-        print(f"  [AVISO] Ocorreu um erro ao executar o processo C++ para '{representation}'.", file=sys.stderr)
+        print(f"  [AVISO] Ocorreu um erro ao executar o processo C++.", file=sys.stderr)
         print(f"  Comando: {' '.join(e.cmd)}", file=sys.stderr)
         print(f"  Saída de Erro (stderr): {e.stderr.strip()}", file=sys.stderr)
-        return None # Retorna None para indicar falha
+        return None
     except FileNotFoundError:
         print(f"ERRO CRÍTICO: Executável '{CPP_EXECUTABLE}' não encontrado.", file=sys.stderr)
         print("Por favor, compile o código C++ primeiro.", file=sys.stderr)
-        sys.exit(1) # Aborta o script
-    except json.JSONDecodeError:
-        print(f"  [AVISO] Falha ao decodificar a saída JSON para '{representation}'.", file=sys.stderr)
+        sys.exit(1)
+    except json.JSONDecodeError as e:
+        print(f"  [AVISO] Falha ao decodificar a saída JSON.", file=sys.stderr)
+        print(f"  Saida (stdout): {e.doc}", file=sys.stderr)
         return None
 
 
@@ -53,14 +56,25 @@ def decompress_gz_file(gz_path: Path) -> Path:
     return txt_path
 
 
-def flatten_json_results(graph_name: str, representation: str, data: dict) -> dict:
+def flatten_json_results(graph_name: str, representation: str, dijkstra_type: str, data: dict) -> dict:
     """Extrai os dados do JSON e os formata em um dicionário plano para o CSV."""
     if not data:
         return {
             "Grafo": graph_name,
             "Representacao": representation,
-            "Status": "Falhou"
+            "Dijkstra_Tipo": dijkstra_type,
+            "Status": "Falhou (JSON Vazio)"
         }
+    
+    if "erro" in data:
+         return {
+            "Grafo": graph_name,
+            "Representacao": representation,
+            "Dijkstra_Tipo": dijkstra_type,
+            "Status": f"Falhou (Erro C++)",
+            "Erro_Msg": data["erro"]
+        }
+
 
     # Funções auxiliares para extrair dados aninhados com segurança
     def get_nested(d, *keys, default='N/A'):
@@ -71,21 +85,57 @@ def flatten_json_results(graph_name: str, representation: str, data: dict) -> di
                 return default
         return d if d is not None else default
 
-    # Extração dos dados
+    # Lê as chaves específicas de tempo
+    if dijkstra_type == 'h':
+        tempo_key = 'tempoMedio_DijkstraHeap_ms'
+        dijkstra_nome = 'Heap'
+    else:
+        tempo_key = 'tempoMedio_DijkstraVetor_ms'
+        dijkstra_nome = 'Vetor'
+
+    # ===================================================================
+    # === INÍCIO DA MODIFICAÇÃO: ADIÇÃO DE NOVAS COLUNAS ===
+    # ===================================================================
     row = {
         "Grafo": graph_name,
         "Representacao": representation,
+        "Dijkstra_Tipo": dijkstra_nome,
         "Status": "Sucesso",
         "Vertices": get_nested(data, 'informacoesBasicas', 'vertices'),
         "Arestas": get_nested(data, 'informacoesBasicas', 'arestas'),
+        
+        # --- ADICIONADO: Estatísticas de Grau ---
         "Grau_Minimo": get_nested(data, 'informacoesBasicas', 'grauMinimo'),
         "Grau_Maximo": get_nested(data, 'informacoesBasicas', 'grauMaximo'),
         "Grau_Medio": get_nested(data, 'informacoesBasicas', 'grauMedio'),
         "Grau_Mediana": get_nested(data, 'informacoesBasicas', 'grauMediana'),
-        "tempoMedio_Dijkstra_ms": get_nested(data, 'desempenho', 'tempoMedio_Dijkstra_ms'),
-        "caminhos": get_nested(data, 'analises', 'caminhos'),
-        "distancias": get_nested(data, 'analises', 'distanciasDijkstra')
+        
+        # --- Tempo de Execução ---
+        "Tempo_Medio_Dijkstra_ms": get_nested(data, 'desempenho', tempo_key),
+        
+        # --- Distâncias ---
+        "Dist_10_20": get_nested(data, 'analises', 'distancias', 'vertice_20'),
+        "Dist_10_30": get_nested(data, 'analises', 'distancias', 'vertice_30'),
+        "Dist_10_40": get_nested(data, 'analises', 'distancias', 'vertice_40'),
+        "Dist_10_50": get_nested(data, 'analises', 'distancias', 'vertice_50'),
+        "Dist_10_60": get_nested(data, 'analises', 'distancias', 'vertice_60'),
+
+        # --- ADICIONADO/DESCOMENTADO: Caminhos ---
+        # Convertemos a lista do JSON (ex: [10, 15, 20]) para uma string
+        "Caminho_10_20": str(get_nested(data, 'analises', 'caminhos', 'vertice_20')),
+        "Caminho_10_30": str(get_nested(data, 'analises', 'caminhos', 'vertice_30')),
+        "Caminho_10_40": str(get_nested(data, 'analises', 'caminhos', 'vertice_40')),
+        "Caminho_10_50": str(get_nested(data, 'analises', 'caminhos', 'vertice_50')),
+        "Caminho_10_60": str(get_nested(data, 'analises', 'caminhos', 'vertice_60')),
     }
+    # ===================================================================
+    # === FIM DA MODIFICAÇÃO                                          ===
+    # ===================================================================
+    
+    
+    # Adiciona colunas de erro se existirem
+    if "Erro_Msg" in row:
+        row["Erro_Msg"] = get_nested(data, 'erro', default='Erro desconhecido')
 
     return row
 
@@ -93,16 +143,12 @@ def flatten_json_results(graph_name: str, representation: str, data: dict) -> di
 def main():
     """Função principal para orquestrar a análise."""
     graph_files_gz = sorted(list(Path(GRAPH_DIR).glob('*.txt.gz')))
-    Run100Dijkstra = "true" # 'true' para rodar 100 Dijkstra, 'false' caso contrário
-    UsingHeapOrList = 'h'  # 'h' para heap, 'l' para lista
+    
     if not graph_files_gz:
         print(f"ERRO: Nenhum arquivo de grafo .txt.gz encontrado no diretório '{GRAPH_DIR}'", file=sys.stderr)
         return
 
     all_results = []
-    
-    # Define os cabeçalhos do CSV de forma dinâmica para garantir que tudo seja incluído
-    # Pega as chaves da primeira análise bem-sucedida como modelo
     csv_headers = []
 
     print("--- Iniciando Análise de Grafos ---")
@@ -111,45 +157,60 @@ def main():
         graph_name = gz_file.name
         print(f"\n[ Processando {graph_name} ]")
         
-        # 1. Descompactar o arquivo
         uncompressed_file = None
         try:
             uncompressed_file = decompress_gz_file(gz_file)
             print(f"  -> Descompactado para: {uncompressed_file.name}")
             
-            # 2. Analisar com ambas as representações
+            # Loop aninhado para rodar TUDO
             for representation in ['lista', 'matriz']:
-                print(f"  -> Analisando com representacao: '{representation}'...")
-                
-                json_data = run_cpp_analysis(str(uncompressed_file), representation,UsingHeapOrList,Run100Dijkstra)
-                flat_data = flatten_json_results(graph_name, representation, json_data)
-                print(flat_data)
-                all_results.append(flat_data)
+                for dijkstra_type in ['h', 'v']: # 'h' para heap, 'v' para vetor
+                    
+                    dijkstra_nome = 'Heap' if dijkstra_type == 'h' else 'Vetor'
+                    print(f"  -> Analisando: Repr='{representation}', Dijkstra='{dijkstra_nome}'...")
+                    
+                    json_data = run_cpp_analysis(
+                        str(uncompressed_file), 
+                        representation,
+                        dijkstra_type,
+                        RUN_MEDIA_AMOSTRAL
+                    )
+                    
+                    flat_data = flatten_json_results(graph_name, representation, dijkstra_type, json_data)
+                    all_results.append(flat_data)
 
-                # Define o cabeçalho do CSV na primeira execução bem-sucedida
-                if not csv_headers and flat_data.get("Status") == "Sucesso":
-                    csv_headers = list(flat_data.keys())
+                    # Define o cabeçalho do CSV na primeira execução bem-sucedida
+                    if not csv_headers and flat_data.get("Status") == "Sucesso":
+                        csv_headers = list(flat_data.keys())
 
-            # 3. Salvar progresso no CSV
-            if csv_headers:
-                print(f"  -> Salvando resultados parciais em '{OUTPUT_CSV_FILE}'...")
-                with open(OUTPUT_CSV_FILE, 'w', newline='', encoding='utf-8') as f:
-                    writer = csv.DictWriter(f, fieldnames=csv_headers)
-                    writer.writeheader()
-                    # Escreve apenas as linhas que têm todas as colunas
-                    for row in all_results:
-                        # Preenche colunas ausentes para linhas de falha
-                        full_row = {h: row.get(h, 'Falhou') for h in csv_headers}
-                        writer.writerow(full_row)
-
+        except Exception as e:
+            print(f"ERRO Inesperado no processamento do {graph_name}: {e}", file=sys.stderr)
+        
         finally:
-            # 4. Limpar o arquivo descompactado
+            # Limpar o arquivo descompactado
             if uncompressed_file and uncompressed_file.exists():
                 os.remove(uncompressed_file)
                 print(f"  -> Arquivo temporário '{uncompressed_file.name}' removido.")
     
+    # --- 3. Salvar CSV Final ---
+    if not all_results:
+        print("Nenhum resultado foi gerado.")
+        return
+
+    # Garante que os cabeçalhos sejam definidos mesmo se todos falharem
+    if not csv_headers:
+        # Pega as chaves da primeira linha, seja ela de sucesso ou falha
+        csv_headers = list(all_results[0].keys())
+
+    print(f"\nSalvando resultados finais em '{OUTPUT_CSV_FILE}'...")
+    with open(OUTPUT_CSV_FILE, 'w', newline='', encoding='utf-8') as f:
+        # extrasaction='ignore' é importante para caso uma linha de falha tenha menos colunas
+        writer = csv.DictWriter(f, fieldnames=csv_headers, extrasaction='ignore')
+        writer.writeheader()
+        for row in all_results:
+            writer.writerow(row)
+    
     print("\n--- Análise Concluída! ---")
-    print(f"Resultados finais salvos em '{OUTPUT_CSV_FILE}'.")
 
 
 if __name__ == '__main__':
