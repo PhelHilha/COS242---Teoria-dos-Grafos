@@ -1,3 +1,5 @@
+// grafo.h
+
 #ifndef GRAFO_H
 #define GRAFO_H
 
@@ -22,16 +24,12 @@ public:
     map<string, double> getEstatisticas() const;
 
     vector<pair<float, int>> DijkstraHeap(int u) const;
+    vector<pair<float, int>> DijkstraVetor(int u) const;
 
     // --- Parte 5: Memória Usada ---
     size_t memoriaUsada() const;
 
 private:
-    // Estrutura interna para resultados da BFS
-    struct ResultadoBFS {
-        vector<int> pais;
-        vector<int> niveis;
-    };
 
     int V; // número de vértices
     int E; // número de arestas
@@ -41,9 +39,6 @@ private:
     vector<vector<pair<int, float>>> listaAdj;
     vector<vector<float>> matrizAdj;
     bool hasNegativeWeights = false;
-
-    // Método auxiliar privado para BFS, otimizando o reuso de código
-    ResultadoBFS BFS_interno(int u) const;
 };
 
 #endif // GRAFO_H
