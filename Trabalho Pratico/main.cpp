@@ -1,47 +1,55 @@
-#include "grafo.h"      // Sua classe de grafo
-#include "json.hpp"     // Biblioteca nlohmann/json
+#include "grafo.h"
+#include "json.hpp"
 #include <iostream>
 #include <string>
 #include <vector>
 #include <chrono>
 #include <algorithm>
+#include <limits> // Necessário para numeric_limits
 
-// Para facilitar a escrita
 using json = nlohmann::json;
-using namespace std::chrono;
 using namespace std;
+using namespace std::chrono;
 
-// Função para converter string para minúsculas para facilitar a comparação
 void toLower(string& s) {
     transform(s.begin(), s.end(), s.begin(),
-                   [](unsigned char c){ return tolower(c); });
+                  [](unsigned char c){ return tolower(c); });
 }
 
-// Assinatura de main modificada para aceitar argumentos de linha de comando
 int main(int argc, char* argv[]) {
+    // --- 1. Validação dos Argumentos ---
+    if (argc < 4) {
+        cerr << "Erro: Argumentos insuficientes." << endl;
+        cerr << "Uso: ./analyzer <arquivo> <representacao> <dijkstra_tipo> [media_amostral]" << endl;
+        cerr << "Exemplo: ./analyzer in.txt lista h t" << endl;
+        return 1;
+    }
 
     string nomeArquivo = argv[1];
     string repr_str = argv[2];
     string dijkstra_check = argv[3];
-    string mediaAmostral = argv[4];
-    toLower(repr_str); // Normaliza para minúsculas
+    // O argumento 4 (media_amostral) é opcional
+    string mediaAmostral = (argc > 4) ? argv[4] : "f"; // 'f' para falso por padrão
+
+    toLower(repr_str);
+    toLower(dijkstra_check);
+    toLower(mediaAmostral);
 
     Representacao tipo;
-    if (repr_str == "lista") {
-        tipo = LISTA;
-    } else if (repr_str == "matriz") {
-        tipo = MATRIZ;
-    } else {
+    if (repr_str == "lista") tipo = LISTA;
+    else if (repr_str == "matriz") tipo = MATRIZ;
+    else {
         cerr << "Erro: Tipo de representacao invalido. Use 'lista' ou 'matriz'." << endl;
         return 1;
     }
 
-    json resultadosJson; // Objeto JSON principal
+    json resultadosJson;
 
     try {
-        // --- 2. Lógica do Programa (sem interação) ---
         resultadosJson["configuracao"]["arquivoDeEntrada"] = nomeArquivo;
-        resultadosJson["configuracao"]["representacao"] = (tipo == LISTA) ? "Lista de Adjacencia" : "Matriz de Adjacencia";
+        resultadosJson["configuracao"]["representacao"] = (tipo == LISTA)
+            ? "Lista de Adjacencia" : "Matriz de Adjacencia";
+        resultadosJson["configuracao"]["dijkstraTipo"] = (dijkstra_check == "h") ? "Heap" : "Vetor";
 
         Grafo g = Grafo::lerDeArquivo(nomeArquivo, tipo);
         map<string, double> estatisticas = g.getEstatisticas();
@@ -53,62 +61,88 @@ int main(int argc, char* argv[]) {
         resultadosJson["informacoesBasicas"]["grauMedio"] = estatisticas["grauMedio"];
         resultadosJson["informacoesBasicas"]["grauMediana"] = estatisticas["grauMediana"];
 
-        json & desempenho = resultadosJson["desempenho"];
-        
+        json &desempenho = resultadosJson["desempenho"];
         vector<pair<float, int>> CustoPai;
 
+        // ----------- DIJKSTRA HEAP -----------
         if (dijkstra_check == "h") {
-            auto inicio_dijkstra = high_resolution_clock::now();
-            CustoPai = g.DijkstraHeap(10);
-            auto fim_dijkstra = high_resolution_clock::now();
-
+            // Executa uma vez para o estudo de caso dos caminhos
+            CustoPai = g.DijkstraHeap(10); 
+            
             if (mediaAmostral == "t") {
-                auto inicio_dijkstra = high_resolution_clock::now();
+                auto inicio_loop = high_resolution_clock::now();
                 for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
                     g.DijkstraHeap(i);
                 }
-                auto fim_dijkstra = high_resolution_clock::now();
-                desempenho["tempoMedio_Dijkstra_ms"] = duration_cast<milliseconds>(fim_dijkstra - inicio_dijkstra).count() / 100.0;
+                auto fim_loop = high_resolution_clock::now();
+                // *** CORREÇÃO AQUI: Chave JSON única ***
+                desempenho["tempoMedio_DijkstraHeap_ms"] = 
+                    duration_cast<milliseconds>(fim_loop - inicio_loop).count() / 100.0;
             }
         }
 
-        // --- 4. Análises Específicas ---
-        json& analises = resultadosJson["analises"];
-        
-        vector<int> inicios = {10};
-        vector<int> alvos = {20, 30, 40, 50, 60};
-        for (int alvo : alvos) {
-            float dist = CustoPai[alvo].first;
-            vector<int> caminho;
-
-            if (dist == numeric_limits<float>::infinity()) {
-                caminho = {}; // Sem caminho
-            } else {
-                // Reconstruir o caminho a partir de CustoPai
-                int atual = alvo;
-                while (atual != 0) { // 0 indica que chegamos à raiz
-                    caminho.push_back(atual);
-                    atual = CustoPai[atual].second;
+        // ----------- DIJKSTRA VETOR -----------
+        else if (dijkstra_check == "v") {
+            // Executa uma vez para o estudo de caso dos caminhos
+            CustoPai = g.DijkstraVetor(10);
+            
+            if (mediaAmostral == "t") {
+                auto inicio_loop = high_resolution_clock::now();
+                for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
+                    g.DijkstraVetor(i);
                 }
-                reverse(caminho.begin(),caminho.end());
+                auto fim_loop = high_resolution_clock::now();
+                // *** CORREÇÃO AQUI: Chave JSON única ***
+                desempenho["tempoMedio_DijkstraVetor_ms"] = 
+                    duration_cast<milliseconds>(fim_loop - inicio_loop).count() / 100.0;
             }
-
-            analises["caminhos"]["Dijkstra"]["vertice_" + to_string(alvo)] = caminho;
-            analises["distanciasDijkstra"]["vertice_" + to_string(alvo)] = (dist == numeric_limits<float>::infinity()) ? -1 : dist;
         }
-        
-        // --- 5. Saída Final ---
-        // Imprime o JSON para 'stdout'. Esta deve ser a ÚNICA saída para cout.
-        cout << resultadosJson.dump(4) << endl;
+        else {
+             cerr << "Erro: Tipo de Dijkstra invalido. Use 'h' (heap) ou 'v' (vetor)." << endl;
+             return 1;
+        }
 
-    } catch (const exception& e) {
-        // Em caso de erro durante a execução, cria um JSON de erro
-        resultadosJson.clear();
-        resultadosJson["erro"] = e.what();
-        // Imprime o erro no 'stderr'
-        cerr << resultadosJson.dump(4) << endl;
-        return 1; // Retorna código de erro
+        // ----------- ANÁLISE DOS CAMINHOS -----------
+        // Esta seção só será preenchida se CustoPai foi inicializado (ou seja, se 'h' ou 'v' foi passado)
+        json& analises = resultadosJson["analises"];
+        vector<int> alvos = {20, 30, 40, 50, 60};
+
+        if (!CustoPai.empty()) { // Só executa se Dijkstra rodou
+            for (int alvo : alvos) {
+                if (alvo >= (int)CustoPai.size()) continue; // segurança
+                float dist = CustoPai[alvo].first;
+                vector<int> caminho;
+
+                if (dist == numeric_limits<float>::infinity()) {
+                    caminho = {};
+                } else {
+                    int atual = alvo;
+                    while (atual != 0 && atual != -1) { // -1 é o pai de um vértice inalcançável
+                        caminho.push_back(atual);
+                        if(CustoPai[atual].second == 0 && atual != 10) // Evita loop se a raiz (10) for 0
+                            break;
+                        atual = CustoPai[atual].second;
+                    }
+                    if(atual == 10) // Adiciona a raiz se ela foi alcançada
+                         caminho.push_back(10);
+                    reverse(caminho.begin(), caminho.end());
+                }
+
+                analises["caminhos"]["vertice_" + to_string(alvo)] = caminho;
+                analises["distancias"]["vertice_" + to_string(alvo)] =
+                    (dist == numeric_limits<float>::infinity()) ? -1 : dist;
+            }
+        }
+
+        cout << resultadosJson.dump(4) << endl;
     }
 
-    return 0; // Sucesso
+    catch (const exception& e) {
+        json erro;
+        erro["erro"] = e.what();
+        cerr << erro.dump(4) << endl;
+        return 1;
+    }
+
+    return 0;
 }
