@@ -12,11 +12,11 @@ CPP_EXECUTABLE = './analyzer.exe'
 GRAPH_DIR = './Grafos'
 OUTPUT_CSV_FILE = 'resultados_analise.csv'
 
-def run_cpp_analysis(graph_file: str, representation: str) -> dict:
+def run_cpp_analysis(graph_file: str, representation: str, dijkstra_check: str, media_amostral: str) -> dict:
     """
     Executa o programa de análise de grafos em C++ e retorna os resultados.
     """
-    command = [CPP_EXECUTABLE, graph_file, representation]
+    command = [CPP_EXECUTABLE, graph_file, representation, dijkstra_check, media_amostral]
     
     try:
         result = subprocess.run(
@@ -82,28 +82,10 @@ def flatten_json_results(graph_name: str, representation: str, data: dict) -> di
         "Grau_Maximo": get_nested(data, 'informacoesBasicas', 'grauMaximo'),
         "Grau_Medio": get_nested(data, 'informacoesBasicas', 'grauMedio'),
         "Grau_Mediana": get_nested(data, 'informacoesBasicas', 'grauMediana'),
-        "Memoria_MB": get_nested(data, 'desempenho', 'memoriaEstimada_MB'),
-        "Tempo_BFS_ms": get_nested(data, 'desempenho', 'tempoMedio_BFS_ms'),
-        "Tempo_DFS_ms": get_nested(data, 'desempenho', 'tempoMedio_DFS_ms'),
-        "CC_Quantidade": get_nested(data, 'analises', 'componentesConexas', 'quantidade'),
-        "CC_Maior": get_nested(data, 'analises', 'componentesConexas', 'tamanhoMaior'),
-        "CC_Menor": get_nested(data, 'analises', 'componentesConexas', 'tamanhoMenor'),
-        "Diametro": get_nested(data, 'analises', 'diametro')
+        "tempoMedio_Dijkstra_ms": get_nested(data, 'desempenho', 'tempoMedio_Dijkstra_ms'),
+        "caminhos": get_nested(data, 'analises', 'caminhos'),
+        "distancias": get_nested(data, 'analises', 'distanciasDijkstra')
     }
-
-    # Extrai distâncias específicas
-    distancias = get_nested(data, 'analises', 'distancias', default=[])
-    dist_map = {item.get('par'): item.get('distancia') for item in distancias}
-    row["Dist_10_20"] = dist_map.get('10-20', 'N/A')
-    row["Dist_10_30"] = dist_map.get('10-30', 'N/A')
-    row["Dist_20_30"] = dist_map.get('20-30', 'N/A')
-
-    # Extrai pais específicos (exemplo para alguns casos)
-    for busca in ['BFS', 'DFS']:
-        for inicio in [1, 2, 3]:
-            for alvo in [10, 20, 30]:
-                col_name = f"Pai_{busca}_S{inicio}_V{alvo}"
-                row[col_name] = get_nested(data, 'analises', 'pais', busca, f'inicio_{inicio}', f'vertice_{alvo}')
 
     return row
 
@@ -111,7 +93,8 @@ def flatten_json_results(graph_name: str, representation: str, data: dict) -> di
 def main():
     """Função principal para orquestrar a análise."""
     graph_files_gz = sorted(list(Path(GRAPH_DIR).glob('*.txt.gz')))
-    
+    Run100Dijkstra = "true" # 'true' para rodar 100 Dijkstra, 'false' caso contrário
+    UsingHeapOrList = 'h'  # 'h' para heap, 'l' para lista
     if not graph_files_gz:
         print(f"ERRO: Nenhum arquivo de grafo .txt.gz encontrado no diretório '{GRAPH_DIR}'", file=sys.stderr)
         return
@@ -138,9 +121,9 @@ def main():
             for representation in ['lista', 'matriz']:
                 print(f"  -> Analisando com representacao: '{representation}'...")
                 
-                json_data = run_cpp_analysis(str(uncompressed_file), representation)
-                
+                json_data = run_cpp_analysis(str(uncompressed_file), representation,UsingHeapOrList,Run100Dijkstra)
                 flat_data = flatten_json_results(graph_name, representation, json_data)
+                print(flat_data)
                 all_results.append(flat_data)
 
                 # Define o cabeçalho do CSV na primeira execução bem-sucedida
