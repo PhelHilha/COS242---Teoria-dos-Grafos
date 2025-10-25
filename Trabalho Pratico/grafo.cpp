@@ -1,3 +1,5 @@
+// grafo.cpp
+
 #include "grafo.h"
 #include <fstream>
 #include <stdexcept>
@@ -27,14 +29,31 @@ void Grafo::adicionarAresta(int u, int v, float peso) {
     if (peso < 0) hasNegativeWeights = true;
 
     if (tipo == LISTA) {
-        if (find(listaAdj[u].begin(), listaAdj[u].end(), make_pair(v, peso)) == listaAdj[u].end()) {
+        // Precisamos checar se a aresta já existe antes de adicionar
+        // O seu `find` original comparava o peso, o que não é o ideal.
+        // Vamos checar apenas se o vizinho 'v' já está na lista de 'u'.
+        
+        bool arestaExiste = false;
+        for (const auto& par : listaAdj[u]) {
+            if (par.first == v) {
+                arestaExiste = true;
+                break;
+            }
+        }
+
+        // Se a aresta (u, v) não existe, adicionamos (u, v) e (v, u)
+        if (!arestaExiste) {
             listaAdj[u].push_back(make_pair(v, peso));
+            listaAdj[v].push_back(make_pair(u, peso)); // Adiciona a aresta recíproca
             E++;
         }
+        // --- FIM DA CORREÇÃO ---
         
-    } else {
+    } else { // MATRIZ
+        // Checamos se a aresta (u, v) já foi definida
         if (matrizAdj[u][v] == -1) {
             matrizAdj[u][v] = peso;
+            matrizAdj[v][u] = peso; // Adiciona a aresta recíproca
             E++;
         }
     }
@@ -141,6 +160,53 @@ vector<pair<float, int>> Grafo::DijkstraHeap(int u) const {
     return CustoPai;
 }
 
+vector<pair<float, int>> Grafo::DijkstraVetor(int u) const {
+    if (hasNegativeWeights) {
+        throw runtime_error("O grafo contém arestas com pesos negativos. Dijkstra não pode ser aplicado.");
+    }
+
+    vector<pair<float, int>> CustoPai(V + 1, make_pair(numeric_limits<float>::infinity(), -1));
+    vector<bool> visitado(V + 1, false);
+
+    CustoPai[u].first = 0.f;
+    CustoPai[u].second = 0; // raiz
+
+    for (int i = 1; i <= V; ++i) {
+        // 1. Escolher o vértice não visitado com menor distância
+        float menor = numeric_limits<float>::infinity();
+        int vertice_atual = -1;
+        for (int v = 1; v <= V; ++v) {
+            if (!visitado[v] && CustoPai[v].first < menor) {
+                menor = CustoPai[v].first;
+                vertice_atual = v;
+            }
+        }
+
+        if (vertice_atual == -1) break; // acabou
+        visitado[vertice_atual] = true;
+
+        // 2. Relaxar as arestas
+        if (tipo == LISTA) {
+            for (const auto& [vizinho, peso] : listaAdj[vertice_atual]) {
+                if (CustoPai[vertice_atual].first + peso < CustoPai[vizinho].first) {
+                    CustoPai[vizinho].first = CustoPai[vertice_atual].first + peso;
+                    CustoPai[vizinho].second = vertice_atual;
+                }
+            }
+        } else {
+            for (int vizinho = 1; vizinho <= V; ++vizinho) {
+                float peso = matrizAdj[vertice_atual][vizinho];
+                if (peso != -1 && CustoPai[vertice_atual].first + peso < CustoPai[vizinho].first) {
+                    CustoPai[vizinho].first = CustoPai[vertice_atual].first + peso;
+                    CustoPai[vizinho].second = vertice_atual;
+                }
+            }
+        }
+    }
+
+    return CustoPai;
+}
+
 // --- Parte 5: Memória Usada ---
 
 size_t Grafo::memoriaUsada() const {
@@ -148,14 +214,14 @@ size_t Grafo::memoriaUsada() const {
     if (tipo == LISTA) {
         memoria += sizeof(listaAdj); // Overhead do vetor principal
         for (int i = 1; i <= V; i++) {
-            // Memória = (tamanho do vetor) * (tamanho do tipo) + overhead do vetor
-            memoria += listaAdj[i].capacity() * sizeof(int) + sizeof(vector<int>);
+            // CORREÇÃO: O tipo de dado agora é pair<int, float>
+            memoria += listaAdj[i].capacity() * sizeof(pair<int, float>) + sizeof(vector<pair<int, float>>);
         }
     } else { // MATRIZ
-        // O tamanho é (V+1) x (V+1)
         memoria += sizeof(matrizAdj); // Overhead do vetor principal
         for (int i = 0; i <= V; ++i) {
-             memoria += matrizAdj[i].capacity() * sizeof(int) + sizeof(vector<int>);
+             // CORREÇÃO: O tipo de dado agora é float
+             memoria += matrizAdj[i].capacity() * sizeof(float) + sizeof(vector<float>);
         }
     }
     return memoria;
