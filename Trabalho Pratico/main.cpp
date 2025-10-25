@@ -19,17 +19,11 @@ void toLower(string& s) {
 
 // Assinatura de main modificada para aceitar argumentos de linha de comando
 int main(int argc, char* argv[]) {
-    // --- 1. Validação dos Argumentos ---
-    if (argc < 3) {
-        // Imprime mensagens de erro no 'stderr' (saída de erro padrão)
-        cerr << "Erro: Uso incorreto." << endl;
-        cerr << "Uso: ./analyzer <caminho_do_arquivo> <representacao>" << endl;
-        cerr << "Exemplo: ./analyzer entrada.txt lista" << endl;
-        return 1; // Retorna um código de erro
-    }
 
     string nomeArquivo = argv[1];
     string repr_str = argv[2];
+    string dijkstra_check = argv[3];
+    string mediaAmostral = argv[4];
     toLower(repr_str); // Normaliza para minúsculas
 
     Representacao tipo;
@@ -50,13 +44,6 @@ int main(int argc, char* argv[]) {
         resultadosJson["configuracao"]["representacao"] = (tipo == LISTA) ? "Lista de Adjacencia" : "Matriz de Adjacencia";
 
         Grafo g = Grafo::lerDeArquivo(nomeArquivo, tipo);
-        // 3. Salvar BFS e DFS consolidados em arquivo único
-        int vertice_inicial = 1; // padrão
-        if (argc >= 4) {
-            vertice_inicial = stoi(argv[3]); // usuário pode passar um vértice inicial
-        }
-        string saidaBuscas = nomeArquivo + "_buscas.txt";
-        g.salvarBuscasConsolidadas(vertice_inicial, saidaBuscas);
         map<string, double> estatisticas = g.getEstatisticas();
 
         resultadosJson["informacoesBasicas"]["vertices"] = estatisticas["vertices"];
@@ -66,63 +53,50 @@ int main(int argc, char* argv[]) {
         resultadosJson["informacoesBasicas"]["grauMedio"] = estatisticas["grauMedio"];
         resultadosJson["informacoesBasicas"]["grauMediana"] = estatisticas["grauMediana"];
 
-        json& desempenho = resultadosJson["desempenho"];
-
-        auto inicio_bfs = high_resolution_clock::now();
-        for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
-            g.BFS_com_retorno(i);
-        }
-        auto fim_bfs = high_resolution_clock::now();
-        desempenho["tempoMedio_BFS_ms"] = duration_cast<milliseconds>(fim_bfs - inicio_bfs).count() / 100.0;
-
-        auto inicio_dfs = high_resolution_clock::now();
-        for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
-            g.DFS_com_retorno(i);
-        }
-        auto fim_dfs = high_resolution_clock::now();
-        desempenho["tempoMedio_DFS_ms"] = duration_cast<milliseconds>(fim_dfs - inicio_dfs).count() / 100.0;
+        json & desempenho = resultadosJson["desempenho"];
         
-        desempenho["memoriaEstimada_MB"] = g.memoriaUsada() / (1024.0 * 1024.0);
-        
+        vector<pair<float, int>> CustoPai;
+
+        if (dijkstra_check == "h") {
+            auto inicio_dijkstra = high_resolution_clock::now();
+            CustoPai = g.DijkstraHeap(10);
+            auto fim_dijkstra = high_resolution_clock::now();
+
+            if (mediaAmostral == "t") {
+                auto inicio_dijkstra = high_resolution_clock::now();
+                for (int i = 1; i <= 100 && i <= g.getNumVertices(); i++) {
+                    g.DijkstraHeap(i);
+                }
+                auto fim_dijkstra = high_resolution_clock::now();
+                desempenho["tempoMedio_Dijkstra_ms"] = duration_cast<milliseconds>(fim_dijkstra - inicio_dijkstra).count() / 100.0;
+            }
+        }
+
         // --- 4. Análises Específicas ---
         json& analises = resultadosJson["analises"];
         
-        vector<int> inicios = {1, 2, 3};
-        vector<int> alvos = {10, 20, 30};
-        for (int v_inicio : inicios) {
-            auto pais_bfs = g.BFS_com_retorno(v_inicio);
-            auto pais_dfs = g.DFS_com_retorno(v_inicio);
-            for (int v_alvo : alvos) {
-                if (v_alvo < pais_bfs.size()) {
-                    analises["pais"]["BFS"]["inicio_" + to_string(v_inicio)]["vertice_" + to_string(v_alvo)] = pais_bfs[v_alvo];
+        vector<int> inicios = {10};
+        vector<int> alvos = {20, 30, 40, 50, 60};
+        for (int alvo : alvos) {
+            float dist = CustoPai[alvo].first;
+            vector<int> caminho;
+
+            if (dist == numeric_limits<float>::infinity()) {
+                caminho = {}; // Sem caminho
+            } else {
+                // Reconstruir o caminho a partir de CustoPai
+                int atual = alvo;
+                while (atual != 0) { // 0 indica que chegamos à raiz
+                    caminho.push_back(atual);
+                    atual = CustoPai[atual].second;
                 }
-                if (v_alvo < pais_dfs.size()) {
-                    analises["pais"]["DFS"]["inicio_" + to_string(v_inicio)]["vertice_" + to_string(v_alvo)] = pais_dfs[v_alvo];
-                }
+                reverse(caminho.begin(),caminho.end());
             }
+
+            analises["caminhos"]["Dijkstra"]["vertice_" + to_string(alvo)] = caminho;
+            analises["distanciasDijkstra"]["vertice_" + to_string(alvo)] = (dist == numeric_limits<float>::infinity()) ? -1 : dist;
         }
         
-        vector<pair<int, int>> pares = {{10, 20}, {10, 30}, {20, 30}};
-        for (const auto& par : pares) {
-            json dist_obj;
-            dist_obj["par"] = to_string(par.first) + "-" + to_string(par.second);
-            dist_obj["distancia"] = g.distancia(par.first, par.second);
-            analises["distancias"].push_back(dist_obj);
-        }
-        
-        auto componentes = g.getComponentesConexas();
-        if (!componentes.empty()) {
-            analises["componentesConexas"]["quantidade"] = componentes.size();
-            auto it_maior = max_element(componentes.begin(), componentes.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
-            analises["componentesConexas"]["tamanhoMaior"] = it_maior->size();
-            auto it_menor = min_element(componentes.begin(), componentes.end(), [](const auto& a, const auto& b) { return a.size() < b.size(); });
-            analises["componentesConexas"]["tamanhoMenor"] = it_menor->size();
-        } else {
-            analises["componentesConexas"]["quantidade"] = 0;
-        }
-        
-        // analises["diametro"] = g.diametro();
-        analises["diametroAproximado"] = g.diametroAproximado();
         // --- 5. Saída Final ---
         // Imprime o JSON para 'stdout'. Esta deve ser a ÚNICA saída para cout.
         cout << resultadosJson.dump(4) << endl;
