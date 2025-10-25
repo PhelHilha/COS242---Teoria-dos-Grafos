@@ -15,28 +15,16 @@ class Grafo {
 public:
     // --- Parte 1: Construtor e Funções Básicas ---
     Grafo(int vertices, Representacao t);
-    void adicionarAresta(int u, int v);
+    void adicionarAresta(int u, int v, float peso);
     static Grafo lerDeArquivo(const string& nomeArquivo, Representacao t);
     int getNumVertices() const { return V; }
     int getNumArestas() const { return E; }
     map<string, double> getEstatisticas() const;
 
-    // --- Parte 2: Buscas que retornam dados ---
-    vector<int> BFS_com_retorno(int u) const;
-    vector<int> DFS_com_retorno(int u) const;
-
-    // --- Parte 3: Distâncias e Diâmetro ---
-    int distancia(int u, int v) const;
-    int diametro() const;
-    int diametroAproximado() const;
-
-    // --- Parte 4: Componentes Conexas que retornam dados ---
-    vector<vector<int>> getComponentesConexas() const;
+    vector<pair<float, int>> DijkstraHeap(int u) const;
 
     // --- Parte 5: Memória Usada ---
     size_t memoriaUsada() const;
-        // --- Parte extra: salvar BFS e DFS em arquivo único ---
-    void salvarBuscasConsolidadas(int verticeInicial, const string& nomeArquivo) const;
 
 private:
     // Estrutura interna para resultados da BFS
@@ -50,8 +38,9 @@ private:
     Representacao tipo; // lista ou matriz
 
     // Estruturas de dados para representar o grafo
-    vector<vector<int>> listaAdj;
-    vector<vector<bool>> matrizAdj;
+    vector<vector<pair<int, float>>> listaAdj;
+    vector<vector<float>> matrizAdj;
+    bool hasNegativeWeights = false;
 
     // Método auxiliar privado para BFS, otimizando o reuso de código
     ResultadoBFS BFS_interno(int u) const;
