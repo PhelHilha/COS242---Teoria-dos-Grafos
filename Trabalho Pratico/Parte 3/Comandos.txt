@@ -1,0 +1,2 @@
+g++ -std=c++17 -O2 main.cpp grafo.cpp -o analyzer.exe
+python .\run_analysis.py
