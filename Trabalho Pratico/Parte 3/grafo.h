@@ -23,6 +23,11 @@ public:
     int getNumArestas() const { return E; }
     map<string, double> getEstatisticas() const;
 
+    // --- Parte 2: Buscas que retornam dados ---
+    vector<int> BFS_com_retorno(int u) const;
+    vector<int> DFS_com_retorno(int u) const;
+
+
     vector<pair<float, int>> DijkstraHeap(int u) const;
     vector<pair<float, int>> DijkstraVetor(int u) const;
 
@@ -35,11 +40,18 @@ private:
     int E; // número de arestas
     Representacao tipo; // lista ou matriz
 
+    struct ResultadoBFS {
+        vector<int> pais;
+        vector<int> niveis;
+    };
+
+
     // Estruturas de dados para representar o grafo
     vector<vector<pair<int, float>>> listaAdj;
     vector<vector<float>> matrizAdj;
     bool hasNegativeWeights = false;
     bool direcionado = false;
+    ResultadoBFS BFS_interno(int u) const;
 };
 
 #endif // GRAFO_H
