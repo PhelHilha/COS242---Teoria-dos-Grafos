@@ -219,6 +219,105 @@ vector<pair<float, int>> Grafo::DijkstraVetor(int u) const {
     return CustoPai;
 }
 
+vector<int> Grafo::BFS_com_retorno(int u) const {
+    // Reutiliza o método interno e retorna apenas o vetor de pais
+    return BFS_interno(u).pais;
+}
+
+vector<int> Grafo::DFS_com_retorno(int u) const {
+    vector<bool> visitado(V + 1, false);
+    vector<int> pai(V + 1, 0);
+    stack<int> pilha;
+
+    // Função para processar um componente a partir de um vértice inicial
+    auto dfs_iterativa_componente = [&](int vertice_inicial) {
+        pilha.push(vertice_inicial);
+        pai[vertice_inicial] = 0; // Raiz da árvore de busca
+
+        while (!pilha.empty()) {
+            int v_atual = pilha.top();
+            pilha.pop();
+
+            if (visitado[v_atual]) {
+                continue;
+            }
+            visitado[v_atual] = true;
+
+            // Para a lista, precisamos inverter a ordem para simular a recursão
+            // (A recursão explora o primeiro vizinho, a pilha explora o último adicionado)
+            if (tipo == LISTA) {
+                const auto& vizinhos = listaAdj[v_atual];
+                // Itera de trás para frente para que o primeiro vizinho seja processado primeiro
+                for (auto it = vizinhos.rbegin(); it != vizinhos.rend(); ++it) {
+                    int vizinho = it->first;
+                    if (!visitado[vizinho]) {
+                        pai[vizinho] = v_atual;
+                        pilha.push(vizinho);
+                    }
+                }
+            } else { // MATRIZ
+                // Itera de trás para frente para manter a consistência
+                for (int vizinho = V; vizinho >= 1; --vizinho) {
+                    if (matrizAdj[v_atual][vizinho] && !visitado[vizinho]) {
+                        pai[vizinho] = v_atual;
+                        pilha.push(vizinho);
+                    }
+                }
+            }
+        }
+    };
+    
+    // Inicia a busca a partir do vértice 'u'
+    if (u >= 1 && u <= V) {
+        dfs_iterativa_componente(u);
+    }
+    
+    // Garante que todos os vértices de outras componentes sejam visitados
+    for (int i = 1; i <= V; ++i) {
+        //if (!visitado[i]) { dfs_iterativa_componente(i);}
+    }
+    
+    return pai;
+}
+
+// --- Parte 3: Distâncias e Diâmetro ---
+
+// Método privado auxiliar, não modificado
+Grafo::ResultadoBFS Grafo::BFS_interno(int u) const {
+    if (u < 1 || u > V) throw out_of_range("Vértice inicial da BFS fora do intervalo.");
+    
+    ResultadoBFS res;
+    res.pais.assign(V + 1, 0);
+    res.niveis.assign(V + 1, -1);
+    queue<int> fila;
+
+    res.niveis[u] = 0;
+    fila.push(u);
+
+    while (!fila.empty()) {
+        int v_atual = fila.front();
+        fila.pop();
+        if (tipo == LISTA) {
+            for (const auto& [vizinho, peso] : listaAdj[v_atual]) {
+                if (res.niveis[vizinho] == -1) {
+                    res.niveis[vizinho] = res.niveis[v_atual] + 1;
+                    res.pais[vizinho] = v_atual;
+                    fila.push(vizinho);
+                }
+            }
+        } else { // MATRIZ
+            for (int vizinho = 1; vizinho <= V; ++vizinho) {
+                if (matrizAdj[v_atual][vizinho] == 1 && res.niveis[vizinho] == -1) {
+                    res.niveis[vizinho] = res.niveis[v_atual] + 1;
+                    res.pais[vizinho] = v_atual;
+                    fila.push(vizinho);
+                }
+            }
+        }
+    }
+    return res;
+}
+
 // --- Parte 5: Memória Usada ---
 
 size_t Grafo::memoriaUsada() const {
