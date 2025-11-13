@@ -12,6 +12,7 @@
 #include <stack>
 #include <limits>   // Para numeric_limits
 
+
 using namespace std;
 
 // --- Parte 1: Construtor e Funções Básicas ---
@@ -21,7 +22,7 @@ Grafo::Grafo(int vertices, Representacao t, bool direcionado) : V(vertices), E(0
     if (tipo == LISTA) {
         listaAdj.resize(V + 1);
     } else {
-        matrizAdj.assign(V + 1, vector<float>(V + 1, -1));
+        matrizAdj.assign(V + 1, vector<float>(V + 1, SEM_ARESTA));
     }
 }
 
@@ -40,38 +41,28 @@ void Grafo::adicionarAresta(int u, int v, float peso) {
                 arestaExiste = true;
                 break;
             }
-        }
-
-        // Se a aresta (u, v) não existe, adicionamos (u, v) e (v, u)
+        }   
         if (!arestaExiste) {
-            if (direcionado) {
-                // Se for direcionado, adicionamos apenas (u, v)
-                listaAdj[u].push_back(make_pair(v, peso));
-            } else {
-                // Se não for direcionado, adicionamos (u, v) e (v, u)
-                listaAdj[u].push_back(make_pair(v, peso));
+            listaAdj[u].push_back(make_pair(v, peso));
+            if (!direcionado) {
                 listaAdj[v].push_back(make_pair(u, peso));
             }
             E++;
         }
-        // --- FIM DA CORREÇÃO ---
+        
         
     } else { // MATRIZ
-        // Checamos se a aresta (u, v) já foi definida
-        if (matrizAdj[u][v] == -1) {
+        if (matrizAdj[u][v] == SEM_ARESTA) {
+            matrizAdj[u][v] = peso;
             if (!direcionado) {
-                matrizAdj[u][v] = peso;
                 matrizAdj[v][u] = peso;
-            } else {
-                matrizAdj[u][v] = peso;
-                //matrizAdj[v][u] = peso; // Comentado pois agora é direcional
             }
             E++;
         }
     }
 }
 
-Grafo Grafo::lerDeArquivo(const string& nomeArquivo, Representacao t) {
+Grafo Grafo::lerDeArquivo(const string& nomeArquivo, Representacao t, bool direcionado, bool inverter) {
     ifstream arq(nomeArquivo);
     if (!arq.is_open()) {
         throw runtime_error("Erro ao abrir arquivo de entrada: " + nomeArquivo);
@@ -79,12 +70,16 @@ Grafo Grafo::lerDeArquivo(const string& nomeArquivo, Representacao t) {
 
     int nVertices;
     arq >> nVertices;
-    Grafo g(nVertices, t, true); // Agora é direcionado
+    Grafo g(nVertices, t, direcionado); 
 
     int u, v;
     float w;
     while (arq >> u >> v >> w) {
-        g.adicionarAresta(u, v, w);
+        if (inverter) {
+            g.adicionarAresta(v, u, w); // Inverte a aresta
+        } else {
+            g.adicionarAresta(u, v, w); // Mantém a aresta original
+        }
     }
     return g;
 }
@@ -101,7 +96,7 @@ map<string, double> Grafo::getEstatisticas() const {
     } else {
         for (int i = 0; i < V; ++i) {
             graus_vec[i] = std::accumulate(matrizAdj[i + 1].begin() + 1, matrizAdj[i + 1].end(), 0,
-                               [](int acc, float w) { return acc + (w != -1.f); });
+                               [this](int acc, float w) { return acc + (w != SEM_ARESTA); });
         }
     }
 
@@ -157,7 +152,7 @@ vector<pair<float, int>> Grafo::DijkstraHeap(int u) const {
             }
         } else { // MATRIZ
             for (int vizinho = 1; vizinho <= V; ++vizinho) {
-                if (matrizAdj[vertice_atual][vizinho] != -1) {
+                if (matrizAdj[vertice_atual][vizinho] != SEM_ARESTA) {
                     float peso = matrizAdj[vertice_atual][vizinho];
                     if (CustoPai[vertice_atual].first + peso < CustoPai[vizinho].first) {
                         CustoPai[vizinho].first = CustoPai[vertice_atual].first + peso;
@@ -208,7 +203,7 @@ vector<pair<float, int>> Grafo::DijkstraVetor(int u) const {
         } else {
             for (int vizinho = 1; vizinho <= V; ++vizinho) {
                 float peso = matrizAdj[vertice_atual][vizinho];
-                if (peso != -1 && CustoPai[vertice_atual].first + peso < CustoPai[vizinho].first) {
+                if (peso != SEM_ARESTA && CustoPai[vertice_atual].first + peso < CustoPai[vizinho].first) {
                     CustoPai[vizinho].first = CustoPai[vertice_atual].first + peso;
                     CustoPai[vizinho].second = vertice_atual;
                 }
@@ -258,7 +253,7 @@ vector<int> Grafo::DFS_com_retorno(int u) const {
             } else { // MATRIZ
                 // Itera de trás para frente para manter a consistência
                 for (int vizinho = V; vizinho >= 1; --vizinho) {
-                    if (matrizAdj[v_atual][vizinho] && !visitado[vizinho]) {
+                    if (matrizAdj[v_atual][vizinho] != SEM_ARESTA && !visitado[vizinho]) {
                         pai[vizinho] = v_atual;
                         pilha.push(vizinho);
                     }
@@ -307,7 +302,7 @@ Grafo::ResultadoBFS Grafo::BFS_interno(int u) const {
             }
         } else { // MATRIZ
             for (int vizinho = 1; vizinho <= V; ++vizinho) {
-                if (matrizAdj[v_atual][vizinho] == 1 && res.niveis[vizinho] == -1) {
+                if (matrizAdj[v_atual][vizinho] != SEM_ARESTA && res.niveis[vizinho] == -1) {
                     res.niveis[vizinho] = res.niveis[v_atual] + 1;
                     res.pais[vizinho] = v_atual;
                     fila.push(vizinho);
@@ -316,6 +311,79 @@ Grafo::ResultadoBFS Grafo::BFS_interno(int u) const {
         }
     }
     return res;
+}
+
+
+pair<bool, vector<pair<float, int>>> Grafo::BellmanFord(int u) const {
+    // Inicialização
+    float INF = numeric_limits<float>::infinity();
+    vector<pair<float, int>> CustoPai(V + 1, make_pair(INF, -1));
+    
+    CustoPai[u].first = 0;
+    CustoPai[u].second = 0; // Raiz
+
+    // Relaxamento repetido V-1 vezes
+    for (int i = 1; i <= V - 1; ++i) {
+        bool trocou = false; // Otimização 1: Flag de parada antecipada
+
+        for (int v_atual = 1; v_atual <= V; ++v_atual) {
+            // Otimização 2: Só relaxa vizinhos se o vértice atual já foi alcançado
+            if (CustoPai[v_atual].first == INF) continue;
+
+            if (tipo == LISTA) {
+                for (const auto& [vizinho, peso] : listaAdj[v_atual]) {
+                    if (CustoPai[v_atual].first + peso < CustoPai[vizinho].first) {
+                        CustoPai[vizinho].first = CustoPai[v_atual].first + peso;
+                        CustoPai[vizinho].second = v_atual;
+                        trocou = true;
+                    }
+                }
+            } else { // MATRIZ
+                for (int vizinho = 1; vizinho <= V; ++vizinho) {
+                    if (matrizAdj[v_atual][vizinho] != SEM_ARESTA) {
+                        float peso = matrizAdj[v_atual][vizinho];
+                        if (CustoPai[v_atual].first + peso < CustoPai[vizinho].first) {
+                            CustoPai[vizinho].first = CustoPai[v_atual].first + peso;
+                            CustoPai[vizinho].second = v_atual;
+                            trocou = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Se nenhuma distância foi atualizada nesta passada, terminamos
+        if (!trocou) break; 
+    }
+
+    // Verificação de Ciclo Negativo (N-ésima iteração)
+    bool cicloNegativo = false;
+    for (int v_atual = 1; v_atual <= V; ++v_atual) {
+        if (CustoPai[v_atual].first == INF) continue;
+
+        if (tipo == LISTA) {
+            for (const auto& [vizinho, peso] : listaAdj[v_atual]) {
+                if (CustoPai[v_atual].first + peso < CustoPai[vizinho].first) {
+                    cicloNegativo = true;
+                    break;
+                }
+            }
+        } else {
+            for (int vizinho = 1; vizinho <= V; ++vizinho) {
+                if (matrizAdj[v_atual][vizinho] != SEM_ARESTA) {
+                    float peso = matrizAdj[v_atual][vizinho];
+                    if (CustoPai[v_atual].first + peso < CustoPai[vizinho].first) {
+                        cicloNegativo = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if (cicloNegativo) break;
+    }
+
+    // O primeiro elemento do par indica SUCESSO (true) se NÃO houver ciclo negativo
+    return make_pair(!cicloNegativo, CustoPai);
 }
 
 // --- Parte 5: Memória Usada ---
