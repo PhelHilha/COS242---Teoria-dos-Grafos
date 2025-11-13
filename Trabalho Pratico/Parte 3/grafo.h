@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <map> // Incluído para o retorno das estatísticas
+#include <limits>
 
 // Usar o namespace std para simplificar
 using namespace std;
@@ -18,7 +19,7 @@ public:
     // --- Parte 1: Construtor e Funções Básicas ---
     Grafo(int vertices, Representacao t, bool direcionado);
     void adicionarAresta(int u, int v, float peso);
-    static Grafo lerDeArquivo(const string& nomeArquivo, Representacao t);
+    static Grafo lerDeArquivo(const string& nomeArquivo, Representacao t, bool direcionado, bool inverter = false);
     int getNumVertices() const { return V; }
     int getNumArestas() const { return E; }
     map<string, double> getEstatisticas() const;
@@ -31,6 +32,8 @@ public:
     vector<pair<float, int>> DijkstraHeap(int u) const;
     vector<pair<float, int>> DijkstraVetor(int u) const;
 
+
+    pair<bool, vector<pair<float, int>>> BellmanFord(int u) const;
     // --- Parte 5: Memória Usada ---
     size_t memoriaUsada() const;
 
@@ -50,7 +53,10 @@ private:
     vector<vector<pair<int, float>>> listaAdj;
     vector<vector<float>> matrizAdj;
     bool hasNegativeWeights = false;
-    bool direcionado = false;
+    bool direcionado;
+
+    const float SEM_ARESTA = numeric_limits<float>::infinity();
+
     ResultadoBFS BFS_interno(int u) const;
 };
 
