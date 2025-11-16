@@ -82,7 +82,18 @@ def print_tables(graph_name: str, bf_data: dict, dijkstra_data: dict):
     
     # Função auxiliar para formatar distância (json 'null' vira 'Inalcançável')
     def format_dist(dist):
-        return "Inalcançável" if dist is None else f"{dist:.2f}"
+        # 1. Checa se é None (vindo do JSON 'null')
+        if dist is None:
+            return "Inalcançável"
+            
+        # 2. CHECAGEM NOVA:
+        # Se não for um número (int ou float), é uma string (ex: "Erro")
+        # Então, apenas retorne a string como ela é.
+        if not isinstance(dist, (int, float)):
+            return str(dist) # Retorna "Erro" ou qualquer outra string
+            
+        # 3. Se passou nas checagens, é um número. Formate-o.
+        return f"{dist:.2f}"
 
     print("\n" + "="*70)
     print(f"Resultados para o Grafo: {graph_name}")
@@ -154,7 +165,7 @@ def main():
             graph_file=str(uncompressed_file),
             representation="lista",
             is_directed="t",
-            invert="f", # Inverte o grafo
+            invert="t", # Inverte o grafo
             algorithm="bellman",
             source="100"
         )
@@ -167,7 +178,7 @@ def main():
         # O C++ irá falhar se detectar pesos negativos, e o script irá capturar isso.
         print("\n[Análise com Dijkstra (Heap)]")
         dijkstra_json = run_cpp_analysis(
-            graph_file=str(graph_file_path),
+            graph_file=str(uncompressed_file),
             representation="lista",
             is_directed="t",
             invert="t", # Inverte o grafo
