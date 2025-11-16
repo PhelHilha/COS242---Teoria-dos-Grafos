@@ -35,9 +35,17 @@ void Grafo::adicionarAresta(int u, int v, float peso) {
         // O seu `find` original comparava o peso, o que não é o ideal.
         // Vamos checar apenas se o vizinho 'v' já está na lista de 'u'.
         
+
+        //listaAdj[u].push_back(make_pair(v, peso));
+        //    if (!direcionado) {
+        //        listaAdj[v].push_back(make_pair(u, peso));
+        //    }
+        //E++;
+
+
         bool arestaExiste = false;
         for (const auto& par : listaAdj[u]) {
-            if (par.first == v) {
+           if (par.first == v) {
                 arestaExiste = true;
                 break;
             }
